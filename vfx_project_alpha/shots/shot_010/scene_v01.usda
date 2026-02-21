@@ -1,0 +1,23 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Scope "World"
+{
+    def Mesh "Hero_Bot"
+    {
+        asset texture_file = @../../textures/iron_diffuse_v02.png@ 
+        token visibility = "hidden"
+        float3[] extent = [(-1, -1, -1), (1, 1, 1)]
+        color3f[] primvars:displayColor = [(0.1, 0.5, 0.8)]
+    }
+
+    def Camera "Main_Cam"
+    {
+        float focalLength = 0
+        float focusDistance = 5.0
+    }
+}
