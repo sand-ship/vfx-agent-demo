@@ -88,35 +88,24 @@ echo -e "  ${RED}${BOLD}✗ 3 issues found. This scene would waste the entire re
 pause
 
 # ── STEP 3: FIX ───────────────────────────────────────────────
-banner "STEP 3 — AI Auto-Correct (Apply Rulebook)"
-step "Reading validation rules from CLAUDE.md..."
+banner "STEP 3 — AI Agent Analyzes & Fixes Scene"
+step "Launching the AI Pre-Render Guard agent..."
 echo ""
-echo -e "${DIM}  Rules loaded:${RESET}"
-echo -e "  ${CYAN}1.${RESET} Asset references must resolve to files on disk"
-echo -e "  ${CYAN}2.${RESET} Camera focalLength must be positive (default: 35mm)"
-echo -e "  ${CYAN}3.${RESET} Mesh visibility should be \"inherited\""
+echo -e "  ${DIM}The agent reads rulebook.md, inspects the scene, reasons about${RESET}"
+echo -e "  ${DIM}what's wrong, and autonomously decides how to fix each issue.${RESET}"
 echo ""
 
-step "Applying fixes to ${USDA}..."
-echo ""
+# Check API key is set
+if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+  echo -e "  ${RED}${BOLD}ERROR: ANTHROPIC_API_KEY is not set.${RESET}"
+  echo -e "  ${DIM}Run: export ANTHROPIC_API_KEY=\"your-key-here\"${RESET}"
+  exit 1
+fi
 
-# Fix 1: texture path
-sed -i '' 's/iron_diffuse_v02\.png/iron_diffuse_v01.png/' "$USDA"
-echo -e "  ${GREEN}✓${RESET} Texture: v02.png → ${GREEN}v01.png${RESET}"
-sleep 0.3
-
-# Fix 2: visibility
-sed -i '' 's/visibility = "hidden"/visibility = "inherited"/' "$USDA"
-echo -e "  ${GREEN}✓${RESET} Visibility: \"hidden\" → ${GREEN}\"inherited\"${RESET}"
-sleep 0.3
-
-# Fix 3: focal length
-sed -i '' 's/focalLength = 0/focalLength = 35/' "$USDA"
-echo -e "  ${GREEN}✓${RESET} Focal Length: 0 → ${GREEN}35${RESET}"
-sleep 0.3
+python3 agent.py "$USDA"
 
 echo ""
-echo -e "  ${BLUE}${BOLD}All fixes applied in < 1 second. Artist noticed nothing.${RESET}"
+echo -e "  ${BLUE}${BOLD}Agent finished. All fixes applied autonomously.${RESET}"
 
 pause
 
@@ -147,7 +136,7 @@ echo -e "  ${DIM}2.${RESET} Pre-flight audit ${YELLOW}detected all 3${RESET} ins
 echo -e "  ${DIM}3.${RESET} AI read the rulebook and ${BLUE}auto-corrected${RESET} every issue"
 echo -e "  ${DIM}4.${RESET} Clean file verified — ${GREEN}ready for the render farm${RESET}"
 echo ""
-echo -e "  ${BOLD}Cost:${RESET} ${GREEN}0.8 seconds${RESET} vs ${RED}20 minutes${RESET} manual audit"
+echo -e "  ${BOLD}Cost:${RESET} ${GREEN}< 30 seconds${RESET} vs ${RED}20 minutes${RESET} manual audit"
 echo -e "  ${BOLD}Savings:${RESET} ${GREEN}\$19,995${RESET} across a 500-shot feature film"
 echo -e "  ${BOLD}Catch rate:${RESET} ${GREEN}100%${RESET} — zero errors reach the farm"
 echo ""
