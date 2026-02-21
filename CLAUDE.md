@@ -16,6 +16,18 @@ python3 verify.py          # Validates the 3 fixes in shot_010
 ./pre_render_check.sh      # Audits all .usda files under shots/
 ```
 
+### Agentic Mode
+
+```bash
+pip install -r requirements.txt
+export ANTHROPIC_API_KEY=your-key-here
+python3 setup_vfx_env.py   # Regenerate the broken scene
+python3 agent.py vfx_project_alpha/shots/shot_010/scene_v01.usda
+```
+
+The agent reads `rulebook.md`, uses Claude to reason about the scene, applies fixes
+via tools, and runs `pre_render_check.sh` as a final deterministic backstop.
+
 ## File Map
 
 ### Core VFX Project
@@ -27,6 +39,11 @@ python3 verify.py          # Validates the 3 fixes in shot_010
 - `verify.py` — Checks scene_v01.usda for: texture=v01, visibility=inherited, focalLength=35
 - `pre_render_check.sh` — Bash script to audit any .usda files for path integrity, focal length, visibility
 - `CHANGELOG.md` — Documents the 3 fixes in a professional table
+
+### Agentic System
+- `agent.py` — Claude-powered agent with tool-use loop (read files, list dirs, apply fixes, run validation)
+- `rulebook.md` — Natural language rules the agent interprets at runtime (edit rules without touching code)
+- `requirements.txt` — Python dependencies (anthropic SDK)
 
 ### Executive Dashboards (both self-contained, base64 images embedded)
 - `Usher_VFX.html` (1.5MB) — **Desktop dashboard** with:
