@@ -7,8 +7,14 @@ The agent reads a rulebook, inspects scene files using tools, reasons about
 problems, applies fixes, and verifies the result — all autonomously.
 
 Usage:
-    python3 agent.py <scene_file.usda>
+    python3 agent.py <scene_file>                 Auto-validate (default)
+    python3 agent.py <scene_file> -i              Interactive conversation
+    python3 agent.py <scene_file> "your prompt"   One-shot custom prompt
+
+Examples:
     python3 agent.py vfx_project_alpha/shots/shot_010/scene_v01.usda
+    python3 agent.py scene_v01.usda -i
+    python3 agent.py scene_v01.usda "What's wrong with the camera?"
 """
 
 import anthropic
@@ -229,17 +235,10 @@ def load_rulebook(path: str = "rulebook.md") -> str:
         return "(No rulebook found — using built-in defaults)"
 
 
-def run_agent(scene_path: str) -> str:
-    """
-    Run the agentic validation loop against a scene file.
-
-    Returns the agent's final summary text.
-    """
+def build_system_prompt(scene_path: str) -> str:
+    """Build the system prompt with the rulebook and scene context."""
     rulebook = load_rulebook()
-
-    client = anthropic.Anthropic()
-
-    system_prompt = (
+    return (
         "You are the VFX Pre-Render Guard, an AI agent that validates USD scene "
         "files before they reach the render farm. You catch errors that would waste "
         "expensive GPU hours.\n\n"
@@ -256,28 +255,21 @@ def run_agent(scene_path: str) -> str:
         "Be thorough but precise. Only fix real problems — don't change things that "
         "are correct. Explain each issue in plain language a VFX supervisor would "
         "understand.\n\n"
+        f"The scene file under review is: {scene_path}\n\n"
         "--- RULEBOOK ---\n"
         f"{rulebook}"
     )
 
-    messages = [
-        {
-            "role": "user",
-            "content": (
-                f"A scene file was just saved and needs pre-render validation:\n\n"
-                f"  {scene_path}\n\n"
-                f"Please read it, identify any issues, fix them, and verify the result."
-            ),
-        }
-    ]
 
-    print(f"\n{'='*60}")
-    print(f"  VFX Pre-Render Guard Agent")
-    print(f"  Scene: {scene_path}")
-    print(f"{'='*60}\n")
+def agent_turn(client, system_prompt: str, messages: list) -> str | None:
+    """
+    Run agent turns until it stops calling tools (end_turn).
 
+    Mutates `messages` in place. Returns the agent's final text, or None
+    if the max turn limit is hit.
+    """
     turn = 0
-    max_turns = 20  # safety limit
+    max_turns = 20
 
     while turn < max_turns:
         turn += 1
@@ -290,22 +282,17 @@ def run_agent(scene_path: str) -> str:
             messages=messages,
         )
 
-        # Collect assistant content blocks
         assistant_content = response.content
 
-        # Print any text the agent emits
         for block in assistant_content:
             if hasattr(block, "text"):
                 print(block.text)
 
-        # If the agent is done (no more tool calls), we're finished
         if response.stop_reason == "end_turn":
-            final_text = "\n".join(
+            return "\n".join(
                 block.text for block in assistant_content if hasattr(block, "text")
             )
-            return final_text
 
-        # Process tool calls
         tool_results = []
         for block in assistant_content:
             if block.type == "tool_use":
@@ -320,11 +307,84 @@ def run_agent(scene_path: str) -> str:
                     }
                 )
 
-        # Feed results back into the conversation
         messages.append({"role": "assistant", "content": assistant_content})
         messages.append({"role": "user", "content": tool_results})
 
-    return "ERROR: Agent hit maximum turn limit without completing."
+    return None
+
+
+def run_agent(scene_path: str, prompt: str | None = None) -> str:
+    """
+    Run the agentic validation loop against a scene file.
+
+    If prompt is provided, it's used as the user message instead of the
+    default validation request.
+
+    Returns the agent's final summary text.
+    """
+    client = anthropic.Anthropic()
+    system_prompt = build_system_prompt(scene_path)
+
+    if prompt:
+        user_message = prompt
+    else:
+        user_message = (
+            f"A scene file was just saved and needs pre-render validation:\n\n"
+            f"  {scene_path}\n\n"
+            f"Please read it, identify any issues, fix them, and verify the result."
+        )
+
+    messages = [{"role": "user", "content": user_message}]
+
+    print(f"\n{'='*60}")
+    print(f"  VFX Pre-Render Guard Agent")
+    print(f"  Scene: {scene_path}")
+    print(f"{'='*60}\n")
+
+    result = agent_turn(client, system_prompt, messages)
+    if result is None:
+        return "ERROR: Agent hit maximum turn limit without completing."
+    return result
+
+
+def run_interactive(scene_path: str):
+    """
+    Interactive conversation mode — talk to the agent in natural language.
+
+    The agent keeps full conversation context so you can ask follow-up
+    questions, request specific checks, or guide the fixes step by step.
+    """
+    client = anthropic.Anthropic()
+    system_prompt = build_system_prompt(scene_path)
+    messages = []
+
+    print(f"\n{'='*60}")
+    print(f"  VFX Pre-Render Guard — Interactive Mode")
+    print(f"  Scene: {scene_path}")
+    print(f"  Type your requests in plain English.")
+    print(f"  Type 'quit' or 'exit' to stop.")
+    print(f"{'='*60}\n")
+
+    while True:
+        try:
+            user_input = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nGoodbye.")
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in ("quit", "exit", "q"):
+            print("Goodbye.")
+            break
+
+        messages.append({"role": "user", "content": user_input})
+
+        print()
+        result = agent_turn(client, system_prompt, messages)
+        if result is None:
+            print("(agent hit turn limit — conversation continues)")
+        print()
 
 
 # ---------------------------------------------------------------------------
@@ -332,21 +392,8 @@ def run_agent(scene_path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 agent.py <scene_file.usda>")
-        print("Example: python3 agent.py vfx_project_alpha/shots/shot_010/scene_v01.usda")
-        sys.exit(1)
-
-    scene_path = sys.argv[1]
-
-    if not os.path.isfile(scene_path):
-        print(f"Error: Scene file not found: {scene_path}")
-        sys.exit(1)
-
-    summary = run_agent(scene_path)
-
-    # Print audit log
+def print_audit_log():
+    """Print the accumulated audit log."""
     if audit_log:
         print(f"\n{'='*60}")
         print(f"  Audit Log — {len(audit_log)} fix(es) applied")
@@ -358,8 +405,40 @@ def main():
             print(f"    Now:   {entry['new']}")
     else:
         print("\n  No fixes were needed — scene is clean.")
-
     print()
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage:")
+        print("  python3 agent.py <scene_file>                 Auto-validate (default)")
+        print("  python3 agent.py <scene_file> -i              Interactive conversation")
+        print("  python3 agent.py <scene_file> \"your prompt\"   One-shot custom prompt")
+        print()
+        print("Examples:")
+        print("  python3 agent.py vfx_project_alpha/shots/shot_010/scene_v01.usda")
+        print("  python3 agent.py scene_v01.usda -i")
+        print("  python3 agent.py scene_v01.usda \"Check for broken textures\"")
+        sys.exit(1)
+
+    scene_path = sys.argv[1]
+
+    if not os.path.isfile(scene_path):
+        print(f"Error: Scene file not found: {scene_path}")
+        sys.exit(1)
+
+    # Parse mode from remaining args
+    remaining = sys.argv[2:]
+    interactive = any(arg in ("-i", "--interactive") for arg in remaining)
+    prompt_args = [arg for arg in remaining if arg not in ("-i", "--interactive")]
+    custom_prompt = " ".join(prompt_args) if prompt_args else None
+
+    if interactive:
+        run_interactive(scene_path)
+    else:
+        run_agent(scene_path, prompt=custom_prompt)
+
+    print_audit_log()
 
 
 if __name__ == "__main__":
