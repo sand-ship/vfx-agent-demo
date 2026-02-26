@@ -16,7 +16,7 @@ what the agent checks without touching any code.
 
 ### 2. Camera Physical Validity
 - `focalLength` must be greater than 0. A value of 0 is physically impossible (no lens).
-- Typical range: 12mm (ultra-wide) to 300mm (telephoto). Default correction: 35mm.
+- Typical range: 12mm (ultra-wide) to 300mm (telephoto). Default correction: 45mm.
 - `focusDistance` must be positive if present.
 
 ### 3. Mesh Visibility

@@ -93,7 +93,7 @@ step "Reading validation rules from CLAUDE.md..."
 echo ""
 echo -e "${DIM}  Rules loaded:${RESET}"
 echo -e "  ${CYAN}1.${RESET} Asset references must resolve to files on disk"
-echo -e "  ${CYAN}2.${RESET} Camera focalLength must be positive (default: 35mm)"
+echo -e "  ${CYAN}2.${RESET} Camera focalLength must be positive (default: 45mm)"
 echo -e "  ${CYAN}3.${RESET} Mesh visibility should be \"inherited\""
 echo ""
 
@@ -111,8 +111,8 @@ echo -e "  ${GREEN}✓${RESET} Visibility: \"hidden\" → ${GREEN}\"inherited\"$
 sleep 0.3
 
 # Fix 3: focal length
-sed -i '' 's/focalLength = 0/focalLength = 35/' "$USDA"
-echo -e "  ${GREEN}✓${RESET} Focal Length: 0 → ${GREEN}35${RESET}"
+sed -i '' 's/focalLength = 0/focalLength = 45/' "$USDA"
+echo -e "  ${GREEN}✓${RESET} Focal Length: 0 → ${GREEN}45${RESET}"
 sleep 0.3
 
 echo ""

@@ -9,15 +9,15 @@ def Scope "World"
 {
     def Mesh "Hero_Bot"
     {
-        asset texture_file = @../../textures/iron_diffuse_v02.png@ 
-        token visibility = "hidden"
+        asset texture_file = @../../textures/iron_diffuse_v01.png@ 
+        token visibility = "inherited"
         float3[] extent = [(-1, -1, -1), (1, 1, 1)]
         color3f[] primvars:displayColor = [(0.1, 0.5, 0.8)]
     }
 
     def Camera "Main_Cam"
     {
-        float focalLength = 0
+        float focalLength = 45
         float focusDistance = 5.0
     }
 }

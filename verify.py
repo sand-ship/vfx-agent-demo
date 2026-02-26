@@ -18,17 +18,17 @@ def verify():
     if not vis_match or vis_match.group(1) != "inherited":
         errors.append(f"Visibility is '{vis_match.group(1) if vis_match else 'missing'}', expected 'inherited'")
 
-    # Check focalLength is 35
+    # Check focalLength is 45
     fl_match = re.search(r'float focalLength\s*=\s*([\d.]+)', content)
-    if not fl_match or float(fl_match.group(1)) != 35:
-        errors.append(f"focalLength is {fl_match.group(1) if fl_match else 'missing'}, expected 35")
+    if not fl_match or float(fl_match.group(1)) != 45:
+        errors.append(f"focalLength is {fl_match.group(1) if fl_match else 'missing'}, expected 45")
 
     if errors:
         for e in errors:
             print(f"FAIL: {e}")
         sys.exit(1)
     else:
-        print("SUCCESS: All checks passed — texture is v01, visibility is inherited, focalLength is 35.")
+        print("SUCCESS: All checks passed — texture is v01, visibility is inherited, focalLength is 45.")
 
 if __name__ == "__main__":
     verify()

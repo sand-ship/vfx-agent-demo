@@ -13,7 +13,13 @@
       "Bash(git -C /Users/sandeep.srinivasan/vfx-agent-demo diff)",
       "Bash(git -C /Users/sandeep.srinivasan/vfx-agent-demo add .gitignore CLAUDE.md CHANGELOG.md setup_vfx_env.py verify.py pre_render_check.sh demo.sh Usher_VFX.html mobile_demo.html frame_1_footage.png frame_2_vfx.png frame_3_render.png \"Screenshot 2026-02-21 at 2.08.40 PM.png\" vfx_project_alpha/shots/shot_010/scene_v01.usda vfx_project_alpha/textures/iron_diffuse_v01.png .claude/settings.local.json)",
       "Bash(git -C /Users/sandeep.srinivasan/vfx-agent-demo add .gitignore CLAUDE.md CHANGELOG.md setup_vfx_env.py verify.py pre_render_check.sh demo.sh Usher_VFX.html mobile_demo.html frame_1_footage.png frame_2_vfx.png frame_3_render.png vfx_project_alpha/shots/shot_010/scene_v01.usda vfx_project_alpha/textures/iron_diffuse_v01.png .claude/settings.local.json)",
-      "Bash(git -C /Users/sandeep.srinivasan/vfx-agent-demo add \"Screenshot*\")"
+      "Bash(git -C /Users/sandeep.srinivasan/vfx-agent-demo add \"Screenshot*\")",
+      "Bash(git -C /Users/sandeep.srinivasan/vfx-agent-demo status)",
+      "Bash(git -C:*)",
+      "Bash(claude)",
+      "Bash(clear:*)",
+      "Bash(claude mcp:)",
+      "Bash(claude mcp:*)"
     ]
   }
 }
