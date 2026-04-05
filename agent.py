@@ -23,6 +23,12 @@ import os
 import subprocess
 import sys
 
+try:
+    from pxr import Usd, UsdGeom, UsdShade, Sdf, Ar
+    HAS_USD = True
+except ImportError:
+    HAS_USD = False
+
 # ---------------------------------------------------------------------------
 # Tool definitions — these are what the agent can call
 # ---------------------------------------------------------------------------
@@ -126,6 +132,61 @@ TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "inspect_scene_usd",
+        "description": (
+            "Inspect a USD scene file using the OpenUSD SDK (pxr). Returns a structured "
+            "analysis of every prim: type, visibility, asset references, camera settings, "
+            "transform values, material bindings, and whether referenced assets exist on "
+            "disk. Works with both .usda (text) and .usdc (binary) files. Use this instead "
+            "of read_file for USD scenes — it understands the scene graph semantically."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the USD scene file (.usda or .usdc).",
+                }
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "fix_usd_property",
+        "description": (
+            "Modify a property on a USD prim using the OpenUSD SDK. This is more robust "
+            "than text replacement — it understands the scene graph and writes valid USD. "
+            "Specify the prim path (e.g. /World/Main_Cam), attribute name (e.g. focalLength), "
+            "and the new value."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Path to the USD scene file.",
+                },
+                "prim_path": {
+                    "type": "string",
+                    "description": "The USD prim path (e.g. /World/Hero_Bot, /World/Main_Cam).",
+                },
+                "attribute": {
+                    "type": "string",
+                    "description": "The attribute name to modify (e.g. focalLength, visibility).",
+                },
+                "value": {
+                    "type": "string",
+                    "description": "The new value as a string. Numbers will be parsed automatically.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Why this fix is being applied (for the audit log).",
+                },
+            },
+            "required": ["path", "prim_path", "attribute", "value", "reason"],
+        },
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -215,6 +276,178 @@ def execute_tool(name: str, tool_input: dict) -> str:
             return "ERROR: pre_render_check.sh not found"
         except subprocess.TimeoutExpired:
             return "ERROR: Validation script timed out after 30s"
+
+    elif name == "inspect_scene_usd":
+        if not HAS_USD:
+            return "ERROR: USD SDK (pxr) is not installed. Run: pip install usd-core"
+        path = tool_input["path"]
+        try:
+            stage = Usd.Stage.Open(path)
+            if not stage:
+                return f"ERROR: Could not open USD stage: {path}"
+
+            scene_dir = os.path.dirname(os.path.abspath(path))
+            report = {"file": path, "prims": []}
+
+            for prim in stage.Traverse():
+                prim_info = {
+                    "path": str(prim.GetPath()),
+                    "type": prim.GetTypeName(),
+                    "issues": [],
+                }
+
+                # Check visibility on imageable prims
+                if prim.IsA(UsdGeom.Imageable):
+                    vis_attr = UsdGeom.Imageable(prim).GetVisibilityAttr()
+                    if vis_attr and vis_attr.HasValue():
+                        vis = vis_attr.Get()
+                        prim_info["visibility"] = vis
+                        if vis == "invisible":
+                            prim_info["issues"].append(
+                                f"Visibility is 'invisible' — this prim will not render"
+                            )
+
+                # Check camera properties
+                if prim.IsA(UsdGeom.Camera):
+                    cam = UsdGeom.Camera(prim)
+                    fl_attr = cam.GetFocalLengthAttr()
+                    if fl_attr and fl_attr.HasValue():
+                        fl = fl_attr.Get()
+                        prim_info["focalLength"] = fl
+                        if fl <= 0:
+                            prim_info["issues"].append(
+                                f"focalLength is {fl} — physically invalid (must be > 0)"
+                            )
+                    fd_attr = cam.GetFocusDistanceAttr()
+                    if fd_attr and fd_attr.HasValue():
+                        fd = fd_attr.Get()
+                        prim_info["focusDistance"] = fd
+                        if fd <= 0:
+                            prim_info["issues"].append(
+                                f"focusDistance is {fd} — must be positive"
+                            )
+
+                # Check mesh properties
+                if prim.IsA(UsdGeom.Mesh):
+                    extent_attr = prim.GetAttribute("extent")
+                    if extent_attr and extent_attr.HasValue():
+                        prim_info["extent"] = str(extent_attr.Get())
+
+                # Check asset references
+                for attr in prim.GetAttributes():
+                    if attr.GetTypeName().cppTypeName == "SdfAssetPath":
+                        val = attr.Get()
+                        if val and val.path:
+                            asset_path = val.path
+                            resolved = os.path.normpath(
+                                os.path.join(scene_dir, asset_path)
+                            )
+                            exists = os.path.isfile(resolved)
+                            prim_info.setdefault("assets", []).append({
+                                "attribute": attr.GetName(),
+                                "path": asset_path,
+                                "resolved": resolved,
+                                "exists": exists,
+                            })
+                            if not exists:
+                                # Look for similar files
+                                asset_dir = os.path.dirname(resolved)
+                                suggestions = []
+                                if os.path.isdir(asset_dir):
+                                    base = os.path.basename(asset_path)
+                                    for f in sorted(os.listdir(asset_dir)):
+                                        if f != base and os.path.splitext(f)[1] == os.path.splitext(base)[1]:
+                                            suggestions.append(f)
+                                prim_info["issues"].append(
+                                    f"Asset not found: {asset_path} "
+                                    f"(resolved: {resolved})"
+                                    + (f" — similar files: {suggestions}" if suggestions else "")
+                                )
+
+                # Check material bindings
+                binding_api = UsdShade.MaterialBindingAPI(prim)
+                mat, _ = binding_api.ComputeBoundMaterial()
+                if mat:
+                    prim_info["material"] = str(mat.GetPath())
+                elif prim.IsA(UsdGeom.Mesh):
+                    prim_info["issues"].append("No material binding on this mesh")
+
+                report["prims"].append(prim_info)
+
+            # Summary
+            all_issues = []
+            for p in report["prims"]:
+                for issue in p["issues"]:
+                    all_issues.append(f"  {p['path']}: {issue}")
+
+            summary = f"Scene: {path}\nPrims found: {len(report['prims'])}\n"
+            if all_issues:
+                summary += f"Issues found: {len(all_issues)}\n\n"
+                summary += "\n".join(all_issues)
+            else:
+                summary += "No issues found — scene looks clean."
+
+            summary += "\n\n--- Full prim details ---\n"
+            summary += json.dumps(report["prims"], indent=2, default=str)
+            return summary
+
+        except Exception as e:
+            return f"ERROR: {e}"
+
+    elif name == "fix_usd_property":
+        if not HAS_USD:
+            return "ERROR: USD SDK (pxr) is not installed. Run: pip install usd-core"
+        path = tool_input["path"]
+        prim_path = tool_input["prim_path"]
+        attribute = tool_input["attribute"]
+        value_str = tool_input["value"]
+        reason = tool_input["reason"]
+
+        try:
+            stage = Usd.Stage.Open(path)
+            if not stage:
+                return f"ERROR: Could not open USD stage: {path}"
+
+            prim = stage.GetPrimAtPath(prim_path)
+            if not prim:
+                return f"ERROR: Prim not found: {prim_path}"
+
+            attr = prim.GetAttribute(attribute)
+            if not attr:
+                return f"ERROR: Attribute '{attribute}' not found on {prim_path}"
+
+            old_value = attr.Get()
+            type_name = attr.GetTypeName()
+
+            # Parse the new value based on the attribute type
+            if "float" in str(type_name):
+                new_value = float(value_str)
+            elif "int" in str(type_name):
+                new_value = int(value_str)
+            elif "token" in str(type_name) or "string" in str(type_name):
+                new_value = value_str
+            elif "asset" in str(type_name):
+                new_value = Sdf.AssetPath(value_str)
+            else:
+                new_value = value_str
+
+            attr.Set(new_value)
+            stage.GetRootLayer().Save()
+
+            entry = {
+                "file": path,
+                "prim": prim_path,
+                "attribute": attribute,
+                "old": str(old_value),
+                "new": str(new_value),
+                "reason": reason,
+            }
+            audit_log.append(entry)
+
+            return json.dumps({"status": "ok", "fix_applied": entry})
+
+        except Exception as e:
+            return f"ERROR: {e}"
 
     else:
         return f"ERROR: Unknown tool: {name}"
