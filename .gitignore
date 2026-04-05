@@ -1,3 +1,5 @@
 .DS_Store
 *.b64
 source_strip.png
+__pycache__/
+vfx_project_alpha/
